@@ -45,6 +45,7 @@ class Autoencoder(object):
                 current_output = tf.nn.sigmoid(tf.add(tf.matmul(current_input, W), b))
                 current_input = current_output
         self.x_ = current_output
+
     def _optimizer(self, loss, var_list):
         decay = 0.96
         decay_step_num = self.batch_size // 5
@@ -59,7 +60,8 @@ class Autoencoder(object):
         opt = tf.train.RMSPropOptimizer(learning_rate).minimize(loss, global_step=batch, var_list=var_list)
         return opt
     
-    def _display(self, zs, display_num):
+    def _display(self, display_num):
+        zs = self.sess.run(self.x_, feed_dict={self.x:data.test.images[:display_num]})
 
         fig, ax = plt.subplots(2, display_num)
         for fig_i in range(display_num):
@@ -72,7 +74,6 @@ class Autoencoder(object):
             ax[1][fig_i].set_yticks([])
         plt.show()
 
-
     def train(self):
         loss = tf.reduce_mean(tf.pow((self.x - self.x_), 2))
         opt = self._optimizer(loss, None)
@@ -80,20 +81,22 @@ class Autoencoder(object):
         display_step = 1
         display_num = 10
         
-        with tf.Session() as sess:
-            sess.run(init)
-            total_batch = int(self.data.train.num_examples / self.batch_size)
-            for step in range(self.step_num):
-                for batch_i in range(total_batch):
-                    batch_xs, batch_ys = self.data.train.next_batch(batch_size)
-                    _, l = sess.run([opt, loss], feed_dict={self.x:batch_xs})
+        self.sess = tf.Session()
+        self.sess.run(init)
 
-                if step % display_step == 0:
-                    print('Step:', '%04d'%(step+1), 'loss =', '{:.9f}'.format(l))
+        total_batch = int(self.data.train.num_examples / self.batch_size)
+        for step in range(self.step_num):
+            for batch_i in range(total_batch):
+                batch_xs, batch_ys = self.data.train.next_batch(batch_size)
+                _, l = self.sess.run([opt, loss], feed_dict={self.x:batch_xs})
 
-            zs = sess.run(self.x_, feed_dict={self.x:data.test.images[:display_num]})
-            print('Optimization completed!')
-            self._display(zs, display_num)
+            if step % display_step == 0:
+                print('Step:', '%04d'%(step+1), 'loss =', '{:.9f}'.format(l))
+
+        print('Optimization completed!')
+        self._display(display_num)
+
+        self.sess.close()
 
 
 if __name__ == '__main__':
@@ -105,7 +108,15 @@ if __name__ == '__main__':
     batch_size = 256
     shape = [784, 256, 128]
 
-    ae = Autoencoder(shape=shape, batch_size=batch_size, step_num=step_num, learning_rate=learning_rate, data_width=28, data_length=28, data=data)
+    ae = Autoencoder(
+        shape=shape, 
+        batch_size=batch_size, 
+        step_num=step_num, 
+        learning_rate=learning_rate, 
+        data_width=28, 
+        data_length=28, 
+        data=data
+    )
     ae.train()
 
 
