@@ -57,7 +57,7 @@ class Autoencoder(object):
             decay,
             staircase=True
         )
-        opt = tf.train.RMSPropOptimizer(learning_rate).minimize(loss, global_step=batch, var_list=var_list)
+        opt = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=batch, var_list=var_list)
         return opt
     
     def _display(self, display_num):
