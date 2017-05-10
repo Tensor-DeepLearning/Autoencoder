@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 """
-An antoencoder class example.
+An exmple of the paper <Deep Subspace Clustering with Sparsity Prior>
 
 Author:ymthink
 E-mail:yinmiaothink@gmail.com
@@ -10,6 +10,7 @@ E-mail:yinmiaothink@gmail.com
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import random
 
 class PARTY(object):
 
@@ -23,12 +24,15 @@ class PARTY(object):
         self.data = data
         self.data_num = np.shape(data)[0]
 
-        self.C = np.zeros(self.data_num, self.data_num)
+        self.C = np.zeros([self.data_num, self.data_num])
 
+        self.sess = tf.Session()
         self._creat_model()
 
     def _creat_model(self):
         self.x = tf.placeholder(tf.float32, [None, shape[0]], name='x')
+        self.Z = tf.placeholder(tf.float32, [self.data_num, shape[len(shape)-1]], name='Z')
+        self.c = tf.placeholder(tf.float32, [None, self.data_num], name='c')
         current_input = self.x
         shape_len = len(self.shape)
         with tf.variable_scope('Encoder'):
@@ -64,57 +68,64 @@ class PARTY(object):
         return opt
     
     def _display(self, display_num):
-        zs = self.sess.run(self.x_, feed_dict={self.x:data.test.images[:display_num]})
+        x_s = self.sess.run(self.x_, feed_dict={self.x:self.data[:display_num]})
 
         fig, ax = plt.subplots(2, display_num)
         for fig_i in range(display_num):
-            ax[0][fig_i].imshow(np.reshape(data.test.images[fig_i], (self.data_length, self.data_width)))
+            ax[0][fig_i].imshow(np.reshape(self.data[fig_i,:], (self.data_length, self.data_width)))
             ax[0][fig_i].set_xticks([])
             ax[0][fig_i].set_yticks([])
 
-            ax[1][fig_i].imshow(np.reshape(zs[fig_i], (self.data_length, self.data_width)))
+            ax[1][fig_i].imshow(np.reshape(x_s[fig_i], (self.data_length, self.data_width)))
             ax[1][fig_i].set_xticks([])
             ax[1][fig_i].set_yticks([])
         plt.show()
+
     def _cal_sparse_prior(self):
+        iter_num = 1000
         Xs = data.T
 
-        x_i = tf.placeholder(tf.float32, [784,1], name='x_i')
-        X = tf.placeholder(tf.float32, [784,self.data_num], name='X')
-        c_i = tf.Variable(tf.random_normal([self.data_num,1]), trainable=True, name='c_i')
+        print('Calculating the sparse prior C matrix ...')
+
+        x_i = tf.placeholder(tf.float32, [self.shape[0], 1], name='x_i')
+        X = tf.placeholder(tf.float32, [self.shape[0], self.data_num], name='X')
+        c_i = tf.Variable(tf.random_normal([self.data_num, 1]), trainable=True, name='c_i')
 
         loss = tf.reduce_mean(tf.square(x_i - tf.matmul(X, c_i))) + tf.reduce_mean(tf.abs(c_i))
         opt = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
-
         init = tf.global_variables_initializer()
-        self.sess.run(init)
 
         for i in range(self.data_num):
-            xs_i = np.reshape(Xs[:,i], (784,1))
+            self.sess.run(init)
+            xs_i = np.reshape(Xs[:,i], [self.shape[0], 1])
 
-            for step in range(1000):
-                _, c = sess.run([opt, c_i], feed_dict={X:Xs, x_i:xs_i})
-            self.C[:,i] = c
+            for step in range(iter_num):
+                _, c = self.sess.run([opt,c_i], feed_dict={X:Xs, x_i:xs_i})
+
+            self.C[i,:] = np.reshape(c, self.data_num)
+            print('c_%d'%i, 'completed. There are %d'%(self.data_num-1-i), 'left.')
             
         self.sess.close()
 
 
     def train(self):
-        loss = tf.reduce_mean(tf.pow((self.x - self.x_), 2)) + tf.reduce_mean(tf.square(self.z - tf.matmul(self.Z, self.z)))
+        self._cal_sparse_prior()
+        loss = tf.reduce_mean(tf.square(self.x - self.x_)) + tf.reduce_mean(tf.square(self.z - tf.matmul(self.c, self.Z)))
         opt = self._optimizer(loss, None)
         init = tf.global_variables_initializer()
 
-        display_step = 1
+        display_step = int(self.step_num / 20)
         display_num = 10
         
-        self.sess = tf.Session()
         self.sess.run(init)
 
-        total_batch = int(self.data.train.num_examples / self.batch_size)
         for step in range(self.step_num):
-            for batch_i in range(total_batch):
-                batch_xs, batch_ys = self.data.train.next_batch(batch_size)
-                _, l = self.sess.run([opt, loss], feed_dict={self.x:batch_xs})
+            i = random.randint(0, self.data_num-1)
+            xs = np.reshape(self.data[i,:], [1, -1])
+            cs = np.reshape(self.C[i,:], [1,-1])
+            Zs = self.sess.run([self.z], feed_dict={self.x:self.data})
+            _, l = self.sess.run([opt, loss], 
+                feed_dict={self.x:xs, self.c:cs, self.Z:Zs[0]})
 
             if step % display_step == 0:
                 print('Step:', '%04d'%(step+1), 'loss =', '{:.9f}'.format(l))
@@ -130,9 +141,10 @@ if __name__ == '__main__':
     mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
 
     learning_rate = 0.01
-    step_num = 30
+    step_num = 20000
     batch_size = 256
     shape = [784, 256, 128]
+    data, _=mnist.train.next_batch(5000)
 
     ae = PARTY(
         shape=shape, 
@@ -141,11 +153,9 @@ if __name__ == '__main__':
         learning_rate=learning_rate, 
         data_width=28, 
         data_length=28, 
-        data=mnist.train.nextbatch(5000)
+        data=data
     )
-    #ae.train()
-    ae._cal_sparse_prior()
-    print(self.C)
+    ae.train()
 
 
 
